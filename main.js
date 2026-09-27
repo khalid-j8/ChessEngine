@@ -10,32 +10,36 @@ function onDragStart (source, piece, position, orientation) {
   if (piece.search(/^b/) !== -1) return false
 }
 
-// makes a random move
-function makeRandomMove () {
-  var computer_move = '';
-  var possibleMoves = game.moves()
+// converts a UCI move string like "e7e5" (or "e7e8q" for promotion)
+// into the {from, to, promotion} object chess.js expects
+function uciToMoveObject (uci) {
+  return {
+    from: uci.slice(0, 2),
+    to: uci.slice(2, 4),
+    promotion: uci.length > 4 ? uci.slice(4, 5) : 'q'
+  }
+}
 
-  // game over
-  if (possibleMoves.length === 0) return
+// asks the Python engine (running via Flask) for its move, then plays it
+async function makeComputerMove () {
+  if (game.game_over()) return
 
-  
+  try {
+    const response = await fetch('http://127.0.0.1:5000/best-move', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fen: game.fen() })
+    })
 
-  for (let i=0; i<(possibleMoves.length); i++) {
-    if (possibleMoves[i].includes('x')) {
-      computer_move = possibleMoves[i];
-      break;
+    const data = await response.json()
+
+    if (data.move) {
+      game.move(uciToMoveObject(data.move))
+      board.position(game.fen())
     }
+  } catch (err) {
+    console.error('Engine request failed:', err)
   }
-
-
-  if (computer_move == '') {
-    var randomIdx = Math.floor(Math.random() * possibleMoves.length)
-    game.move(possibleMoves[randomIdx]);
-  }
-
-  else {game.move(computer_move);}
-
-  board.position(game.fen())
 }
 
 
@@ -51,8 +55,8 @@ function onDrop (source, target) {
   // illegal move
   if (move === null) return 'snapback'
 
-  // make random legal move for black
-  window.setTimeout(makeRandomMove, 250)
+  // ask the Python engine for its move
+  window.setTimeout(makeComputerMove, 250)
 }
 
 // update the board position after the piece snap
@@ -73,4 +77,4 @@ var config = {
 }
 
 // chessboard.js html board representation with ability for human to play white, chess.js functions called inside config
-board = Chessboard('myBoard', config) 
+board = Chessboard('myBoard', config)
