@@ -15,8 +15,8 @@ piece_value = {
 def evaluate_board(board: chess.Board) -> int:
     """
     Material-only evaluation of the position.
-    Positive = better for White, negative = better for Black, 0 = balanced.
     Sums up each piece's value, adding for White's pieces and subtracting for Black's.
+    higher score is better no matter whos turn it is to move since that is already factored in to code
     """
     score = 0
 
@@ -24,57 +24,69 @@ def evaluate_board(board: chess.Board) -> int:
        score += len(board.pieces(piece_type, chess.WHITE)) * value 
        score -= len(board.pieces(piece_type, chess.BLACK)) * value
 
-    return score
+    who_to_move = 1 if board.turn == chess.WHITE else -1
+
+    return score * who_to_move
+
+
+# minmax function
+def negamax(board: chess.Board, depth: int) -> int:
+    legal_moves = list(board.legal_moves)
+
+    # base cases
+    if depth == 0 or board.is_game_over():
+        return evaluate_board(board)
+
+    best_score = -9999
+
+    for move in legal_moves:
+        board.push(move)
+        score = -negamax(board, depth-1)
+        board.pop()
+
+        if score > best_score:
+            best_score = score
+
+    return best_score
 
 
 # function
 def get_best_move(board: chess.Board) -> Optional[chess.Move]:
     legal_moves = list(board.legal_moves)
 
-    # game over / no moves available
     if not legal_moves:
         return None
 
-    # white or black's turn
-    maximising = board.turn == chess.WHITE
-
-    if maximising:
-        best_score = -9999
-    else:
-        best_score = 9999
-
-    # Current logic (eval function)
     best_moves = []
+    depth = 3
+    best_score = -9999
 
     for move in legal_moves:
         board.push(move)
-        score = evaluate_board(board)
-        if score == best_score:
-            best_moves.append(move)
-
-        elif maximising and score > best_score:
-            best_moves.clear()
-            best_moves.append(move)
-            best_score = score
-
-        elif not maximising and score < best_score:
-            best_moves.clear()
-            best_moves.append(move)
-            best_score = score
-
+        score = -negamax(board, depth-1)
+        print(f"  {move}: {score}")
         board.pop()
 
+        if score > best_score:
+            best_moves.clear()
+            best_score = score
+            best_moves.append(move)
 
-    # pick a random move from the best moves array
-    return random.choice(best_moves)
+        elif score == best_score:
+            best_moves.append(move)
 
-# game setup
+    print(f"Best score: {best_score}, candidates: {best_moves}")
+
+    return random.choice(best_moves), best_score
+
+
+
 if __name__ == "__main__":
-    # quick manual test: play a full random/capture-preferring game and print it
     board = chess.Board()
 
     while not board.is_game_over():
-        move = get_best_move(board)
+        move, score = get_best_move(board)
+        print(f"Move: {move}, Eval: {score}")
         board.push(move)
 
     print(board.outcome())

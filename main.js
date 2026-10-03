@@ -21,14 +21,14 @@ function uciToMoveObject (uci) {
 }
 
 // asks the Python engine (running via Flask) for its move, then plays it
-async function makeComputerMove () {
+async function makeComputerMove (humanMoveUci) {
   if (game.game_over()) return
 
   try {
     const response = await fetch('http://127.0.0.1:5000/best-move', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fen: game.fen() })
+      body: JSON.stringify({ fen: game.fen(), human_move: humanMoveUci })
     })
 
     const data = await response.json()
@@ -55,8 +55,11 @@ function onDrop (source, target) {
   // illegal move
   if (move === null) return 'snapback'
 
+  // build the UCI string for what the human just played, to send to the server for logging
+  var humanMoveUci = move.from + move.to + (move.promotion || '')
+
   // ask the Python engine for its move
-  window.setTimeout(makeComputerMove, 250)
+  window.setTimeout(() => makeComputerMove(humanMoveUci), 250)
 }
 
 // update the board position after the piece snap
