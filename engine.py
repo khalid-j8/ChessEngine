@@ -1,7 +1,8 @@
 # imports
 import random
-from typing import Optional
+from typing import Optional,Tuple
 import chess
+
 
 # define piece value for position eval
 piece_value = {
@@ -11,6 +12,7 @@ piece_value = {
     chess.ROOK: 5,
     chess.QUEEN: 9,
 }
+
 
 def evaluate_board(board: chess.Board) -> int:
     """
@@ -29,41 +31,45 @@ def evaluate_board(board: chess.Board) -> int:
     return score * who_to_move
 
 
-# minmax function
-def negamax(board: chess.Board, depth: int) -> int:
-    legal_moves = list(board.legal_moves)
-
+# minmax function using recursion
+def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
     # base cases
     if depth == 0 or board.is_game_over():
         return evaluate_board(board)
 
+    legal_moves = list(board.legal_moves)
     best_score = -9999
 
     for move in legal_moves:
         board.push(move)
-        score = -negamax(board, depth-1)
+        score = -negamax(board,depth-1,-beta,-alpha)
         board.pop()
 
         if score > best_score:
             best_score = score
 
+        if best_score > alpha:
+            alpha = best_score
+
+        if alpha >= beta:
+            break
+
     return best_score
 
 
-# function
-def get_best_move(board: chess.Board) -> Optional[chess.Move]:
+def get_best_move(board: chess.Board) -> Optional[Tuple[chess.Move, int]]:
     legal_moves = list(board.legal_moves)
 
     if not legal_moves:
         return None
 
     best_moves = []
-    depth = 3
+    depth = 4
     best_score = -9999
 
     for move in legal_moves:
         board.push(move)
-        score = -negamax(board, depth-1)
+        score = -negamax(board, depth-1,-10000,10000)
         print(f"  {move}: {score}")
         board.pop()
 
