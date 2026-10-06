@@ -15,6 +15,25 @@ piece_value = {
 
 MateScore = 1000
 
+# function to help with move ordering
+def move_score(board: chess.Board, move: chess.Move) -> int:
+    score = 0
+
+    if move.promotion:
+        score += 100 + 10 * piece_value[move.promotion]
+
+    if board.is_capture(move):
+        victim = chess.PAWN if board.is_en_passant(move) else board.piece_type_at(move.to_square)
+        attacker = board.piece_type_at(move.from_square)
+        score += 100 + 10 * piece_value[victim] - piece_value.get(attacker, 100)
+
+    return score
+
+
+def order_moves(board: chess.Board, moves) -> list:
+    return sorted(moves, key=lambda move: move_score(board, move), reverse=True)
+
+
 def evaluate_board(board: chess.Board) -> int:
     """
     Material-only evaluation of the position.
@@ -45,7 +64,7 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
     if depth == 0: 
         return evaluate_board(board)
 
-    legal_moves = list(board.legal_moves)
+    legal_moves = order_moves(board, board.legal_moves)
     best_score = -9999
 
     for move in legal_moves:
@@ -64,7 +83,7 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
 
     return best_score
 
-def get_best_move(board: chess.Board, depth: int = 4, verbose: bool = True) -> Optional[Tuple[chess.Move, int]]:
+def get_best_move(board: chess.Board, depth: int = 6, verbose: bool = True) -> Optional[Tuple[chess.Move, int]]:
     legal_moves = list(board.legal_moves)
 
     if not legal_moves:
