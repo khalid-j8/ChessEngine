@@ -56,21 +56,20 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
 
     return best_score
 
-
-def get_best_move(board: chess.Board) -> Optional[Tuple[chess.Move, int]]:
+def get_best_move(board: chess.Board, depth: int = 5, verbose: bool = True) -> Optional[Tuple[chess.Move, int]]:
     legal_moves = list(board.legal_moves)
 
     if not legal_moves:
         return None
 
     best_moves = []
-    depth = 4
     best_score = -9999
 
     for move in legal_moves:
         board.push(move)
         score = -negamax(board, depth-1,-10000,10000)
-        print(f"  {move}: {score}")
+        if verbose:
+            print(f"  {move}: {score}")
         board.pop()
 
         if score > best_score:
@@ -81,7 +80,8 @@ def get_best_move(board: chess.Board) -> Optional[Tuple[chess.Move, int]]:
         elif score == best_score:
             best_moves.append(move)
 
-    print(f"Best score: {best_score}, candidates: {best_moves}")
+    if verbose:
+        print(f"Best score: {best_score}, candidates: {best_moves}")
 
     return random.choice(best_moves), best_score
 
