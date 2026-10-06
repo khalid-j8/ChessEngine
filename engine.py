@@ -13,6 +13,7 @@ piece_value = {
     chess.QUEEN: 9,
 }
 
+MateScore = 1000
 
 def evaluate_board(board: chess.Board) -> int:
     """
@@ -34,7 +35,14 @@ def evaluate_board(board: chess.Board) -> int:
 # minmax function using recursion
 def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
     # base cases
-    if depth == 0 or board.is_game_over():
+
+    if board.is_checkmate():
+        return -(MateScore + depth)
+
+    if board.is_game_over():
+        return 0
+
+    if depth == 0: 
         return evaluate_board(board)
 
     legal_moves = list(board.legal_moves)
@@ -56,7 +64,7 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
 
     return best_score
 
-def get_best_move(board: chess.Board, depth: int = 5, verbose: bool = True) -> Optional[Tuple[chess.Move, int]]:
+def get_best_move(board: chess.Board, depth: int = 4, verbose: bool = True) -> Optional[Tuple[chess.Move, int]]:
     legal_moves = list(board.legal_moves)
 
     if not legal_moves:
