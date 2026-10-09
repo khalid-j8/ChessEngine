@@ -32,8 +32,9 @@ def move_score(board: chess.Board, move: chess.Move) -> int:
 
 def order_moves(board: chess.Board, moves) -> list:
     return sorted(moves, key=lambda move: move_score(board, move), reverse=True)
+###
 
-
+# board evaluation 
 def evaluate_board(board: chess.Board) -> int:
     """
     Material-only evaluation of the position.
@@ -51,6 +52,45 @@ def evaluate_board(board: chess.Board) -> int:
     return score * who_to_move
 
 
+# quiescence search
+def quiescence(board: chess.Board, alpha: int, beta: int, evasions_left: int = 2) -> int:
+    if board.is_check() and evasions_left > 0:
+        # in check: standing pat isn't allowed, so try every legal move
+        moves = list(board.legal_moves)
+
+        if not moves:
+            return -MateScore            # no way out of check: checkmate
+
+        bestValue = -9999
+        evasions_left -= 1
+    else:
+        bestValue = evaluate_board(board)
+
+        if bestValue >= beta:
+            return bestValue
+
+        if bestValue > alpha:
+            alpha = bestValue
+
+        moves = [move for move in board.legal_moves if board.is_capture(move) or move.promotion]
+
+    for move in order_moves(board, moves):
+        board.push(move)
+        score = -quiescence(board, -beta, -alpha, evasions_left)
+        board.pop()
+
+        if score > bestValue:
+            bestValue = score
+
+        if bestValue > alpha:
+            alpha = bestValue
+
+        if alpha >= beta:
+            break
+
+    return bestValue
+
+
 # minmax function using recursion
 def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
     # base cases
@@ -62,7 +102,7 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
         return 0
 
     if depth == 0: 
-        return evaluate_board(board)
+        return quiescence(board, alpha, beta)
 
     legal_moves = order_moves(board, board.legal_moves)
     best_score = -9999
@@ -83,7 +123,8 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
 
     return best_score
 
-def get_best_move(board: chess.Board, depth: int = 6, verbose: bool = True) -> Optional[Tuple[chess.Move, int]]:
+
+def get_best_move(board: chess.Board, depth: int = 5, verbose: bool = True) -> Optional[Tuple[chess.Move, int]]:
     legal_moves = list(board.legal_moves)
 
     if not legal_moves:

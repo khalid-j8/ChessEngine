@@ -1,7 +1,7 @@
 import chess
 from engine import get_best_move
 
-fen = "7B/8/8/6P1/P1Q4N/k2pPKPP/7R/8 w - - 0 67"
+fen = "rn3knr/pp3pp1/2p5/q1b1P2p/2P1N1b1/P2B1N2/1BQ2PPP/3RR1K1 b - - 4 17"
 board = chess.Board(fen)
 
 move, score = get_best_move(board)
