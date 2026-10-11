@@ -113,36 +113,69 @@ piece_square_table = {
     chess.QUEEN: QUEEN_TABLE,
 }
 
+# use bitboard for fast evaluation
+
+PIECES = (chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN)
+
+# material + table bonus for every piece on every square, built once when the file loads;
+# White's tables are rank-flipped here so the search never needs `square ^ 56`
+WHITE_VALUE = {
+    piece: [material_value[piece] + piece_square_table[piece][square ^ 56] for square in range(64)]
+    for piece in PIECES
+}
+BLACK_VALUE = {
+    piece: [material_value[piece] + piece_square_table[piece][square] for square in range(64)]
+    for piece in PIECES
+}
+
+# king tables, indexed by whether it's the endgame
+WHITE_KING_VALUE = {
+    False: [KING_MIDDLE_TABLE[square ^ 56] for square in range(64)],
+    True: [KING_END_TABLE[square ^ 56] for square in range(64)],
+}
+BLACK_KING_VALUE = {
+    False: KING_MIDDLE_TABLE,
+    True: KING_END_TABLE,
+}
+
+
 def is_endgame(board: chess.Board) -> bool:
     # endgame if every side that still has a queen has no rooks and at most one minor piece
     for color in (chess.WHITE, chess.BLACK):
-        if board.pieces(chess.QUEEN, color):
-            minors = len(board.pieces(chess.KNIGHT, color)) + len(board.pieces(chess.BISHOP, color))
-            if board.pieces(chess.ROOK, color) or minors > 1:
+        own = board.occupied_co[color]
+        if board.queens & own:
+            if (board.rooks & own) or chess.popcount((board.knights | board.bishops) & own) > 1:
                 return False
-    return True 
+    return True
+
 
 def evaluate_board(board: chess.Board) -> int:
-    """
-    Material plus piece-square bonuses, from the side to move's point of view.
-    """
-    endgame = is_endgame(board)
+    white = board.occupied_co[chess.WHITE]
+    black = board.occupied_co[chess.BLACK]
     score = 0
- 
-    for square, piece in board.piece_map().items():
-        if piece.piece_type == chess.KING:
-            table = KING_END_TABLE if endgame else KING_MIDDLE_TABLE
-            value = 0
-        else:
-            table = piece_square_table[piece.piece_type]
-            value = material_value[piece.piece_type]
- 
-        if piece.color == chess.WHITE:
-            score += value + table[square ^ 56]     # flip the rank: the tables start at rank 8
-        else:
-            score -= value + table[square]          # Black reads the table as written
- 
-    return score if board.turn == chess.WHITE else -score 
+
+    for piece, pieces in (
+        (chess.PAWN, board.pawns),
+        (chess.KNIGHT, board.knights),
+        (chess.BISHOP, board.bishops),
+        (chess.ROOK, board.rooks),
+        (chess.QUEEN, board.queens),
+    ):
+        white_values = WHITE_VALUE[piece]
+        black_values = BLACK_VALUE[piece]
+
+        for square in chess.scan_forward(pieces & white):
+            score += white_values[square]
+
+        for square in chess.scan_forward(pieces & black):
+            score -= black_values[square]
+
+    endgame = is_endgame(board)
+    score += WHITE_KING_VALUE[endgame][board.king(chess.WHITE)]
+    score -= BLACK_KING_VALUE[endgame][board.king(chess.BLACK)]
+
+    return score if board.turn == chess.WHITE else -score
+
 
 
 # function to help with move ordering
@@ -239,7 +272,7 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
     return best_score
 
 
-def get_best_move(board: chess.Board, depth: int = 3, verbose: bool = True) -> Optional[Tuple[chess.Move, int]]:
+def get_best_move(board: chess.Board, depth: int = 4, verbose: bool = True) -> Optional[Tuple[chess.Move, int]]:
     legal_moves = list(board.legal_moves)
 
     if not legal_moves:
