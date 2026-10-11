@@ -78,7 +78,7 @@ def main() -> None:
                 send("bestmove 0000")
             else:
                 move, score = result
-                send(f"info depth {search_depth} score cp {score * 100}")
+                send(f"info depth {search_depth} score cp {score}")
                 send(f"bestmove {move.uci()}")
 
         elif command == "quit":
