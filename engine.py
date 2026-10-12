@@ -249,6 +249,9 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
     if board.is_game_over():
         return 0
 
+    if board.is_check():
+        depth += 1
+
     if depth == 0: 
         return quiescence(board, alpha, beta)
 
