@@ -242,10 +242,7 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
     if board.is_checkmate():
         return -(MateScore + depth)
 
-    #if board.is_game_over() or board.is_repetition(2):
-        #return 0
-
-    if board.is_game_over():
+    if board.is_game_over() or board.is_repetition(2):
         return 0
 
     if board.is_check():

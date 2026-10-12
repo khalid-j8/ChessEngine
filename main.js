@@ -21,14 +21,18 @@ function uciToMoveObject (uci) {
 }
 
 // asks the Python engine (running via Flask) for its move, then plays it
+// asks the Python engine (running via Flask) for its move, then plays it
 async function makeComputerMove (humanMoveUci) {
   if (game.game_over()) return
 
+  // every move played so far, in UCI format, so the engine can detect repetitions
+  const moves = game.history({ verbose: true }).map(m => m.from + m.to + (m.promotion || ''))
+
   try {
-      const response = await fetch('http://127.0.0.1:5001/best-move', {
+    const response = await fetch('http://127.0.0.1:5001/best-move', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fen: game.fen(), human_move: humanMoveUci })
+      body: JSON.stringify({ fen: game.fen(), human_move: humanMoveUci, moves: moves })
     })
 
     const data = await response.json()

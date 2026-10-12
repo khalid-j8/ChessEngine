@@ -17,15 +17,22 @@ def best_move():
     data = request.get_json()
     fen = data.get("fen") if data else None
     human_move = data.get("human_move") if data else None
+    moves = data.get("moves") if data else None
 
-    if not fen:
-        return jsonify({"error": "no fen provided"}), 400
+    if not fen and moves is None:
+        return jsonify({"error": "no fen or moves provided"}), 400
 
-    board = chess.Board(fen)
+    if moves is not None:
+        # replay the whole game so the board knows every earlier position
+        board = chess.Board()
+        for uci in moves:
+            board.push_uci(uci)
+    else:
+        board = chess.Board(fen)
 
     # log the human's move and the resulting position
     if human_move:
-        log_move("Human", human_move, fen)
+        log_move("Human", human_move, board.fen())
 
     result = get_best_move(board)
 
