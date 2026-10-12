@@ -25,7 +25,7 @@ async function makeComputerMove (humanMoveUci) {
   if (game.game_over()) return
 
   try {
-    const response = await fetch('http://127.0.0.1:5000/best-move', {
+      const response = await fetch('http://127.0.0.1:5001/best-move', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fen: game.fen(), human_move: humanMoveUci })

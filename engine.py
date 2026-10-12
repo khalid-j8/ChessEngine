@@ -198,8 +198,8 @@ def order_moves(board: chess.Board, moves) -> list:
 
 
 # quiescence search
-def quiescence(board: chess.Board, alpha: int, beta: int, evasions_left: int = 2) -> int:
-    if board.is_check() and evasions_left > 0:
+def quiescence(board: chess.Board, alpha: int, beta: int) -> int:
+    if board.is_check():
         # in check: standing pat isn't allowed, so try every legal move
         moves = list(board.legal_moves)
 
@@ -207,7 +207,6 @@ def quiescence(board: chess.Board, alpha: int, beta: int, evasions_left: int = 2
             return -MateScore            # no way out of check: checkmate
 
         bestValue = -INF
-        evasions_left -= 1
     else:
         bestValue = evaluate_board(board)
 
@@ -221,7 +220,7 @@ def quiescence(board: chess.Board, alpha: int, beta: int, evasions_left: int = 2
 
     for move in order_moves(board, moves):
         board.push(move)
-        score = -quiescence(board, -beta, -alpha, evasions_left)
+        score = -quiescence(board, -beta, -alpha)
         board.pop()
 
         if score > bestValue:
@@ -275,7 +274,7 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
     return best_score
 
 
-def get_best_move(board: chess.Board, depth: int = 4, verbose: bool = True) -> Optional[Tuple[chess.Move, int]]:
+def get_best_move(board: chess.Board, depth: int = 3, verbose: bool = True) -> Optional[Tuple[chess.Move, int]]:
     legal_moves = list(board.legal_moves)
 
     if not legal_moves:
