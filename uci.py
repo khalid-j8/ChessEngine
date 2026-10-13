@@ -30,6 +30,30 @@ def parse_position(tokens: list) -> chess.Board:
     return board
 
 
+def parse_go(tokens: list, board: chess.Board, default_depth: int):
+    # turns e.g. "go wtime 60000 btime 58000 winc 1000 binc 1000" into (max_depth, time_limit in seconds)
+    params = {}
+    for name in ("wtime", "btime", "winc", "binc", "movetime", "depth"):
+        if name in tokens:
+            params[name] = int(tokens[tokens.index(name) + 1])
+
+    if "depth" in params:
+        return params["depth"], None
+
+    if "movetime" in params:
+        return 64, params["movetime"] / 1000
+
+    my_time = params.get("wtime" if board.turn == chess.WHITE else "btime")
+    my_inc = params.get("winc" if board.turn == chess.WHITE else "binc", 0)
+
+    if my_time is not None:
+        # spend about 1/30 of the remaining time plus half the increment, never more than half the clock
+        budget = min(my_time / 30 + my_inc / 2, my_time / 2)
+        return 64, budget / 1000
+
+    return default_depth, None      # plain "go" with no limits: fixed depth
+
+
 def main() -> None:
     board = chess.Board()
     depth = DEFAULT_DEPTH
@@ -68,17 +92,14 @@ def main() -> None:
             board = parse_position(tokens[1:])
 
         elif command == "go":
-            search_depth = depth
-            if "depth" in tokens:
-                search_depth = int(tokens[tokens.index("depth") + 1])
-
-            result = get_best_move(board, depth=search_depth, verbose=False)
+            max_depth, time_limit = parse_go(tokens, board, depth)
+            result = get_best_move(board, depth=max_depth, time_limit=time_limit, verbose=False)
 
             if result is None:
                 send("bestmove 0000")
             else:
                 move, score = result
-                send(f"info depth {search_depth} score cp {score}")
+                send(f"info score cp {score}")
                 send(f"bestmove {move.uci()}")
 
         elif command == "quit":

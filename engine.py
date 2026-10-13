@@ -1,5 +1,5 @@
 # imports
-import random
+import random, time
 from typing import Optional,Tuple
 import chess
 
@@ -12,9 +12,16 @@ piece_value = {
     chess.QUEEN: 9,
 }
 
-
+#constants
 MateScore = 100000
 INF = 1000000
+
+# search state shared by negamax and quiescence
+class SearchTimeout(Exception):
+    pass
+
+deadline = None     # time.time() value when the search must stop; None means no limit
+nodes = 0           # positions visited in the current search
 
 
 # material values in centipawns, from the Simplified Evaluation Function
@@ -114,7 +121,6 @@ piece_square_table = {
 }
 
 # use bitboard for fast evaluation
-
 PIECES = (chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN)
 
 # material + table bonus for every piece on every square, built once when the file loads;
@@ -199,6 +205,11 @@ def order_moves(board: chess.Board, moves) -> list:
 
 # quiescence search
 def quiescence(board: chess.Board, alpha: int, beta: int) -> int:
+    global nodes
+    nodes += 1
+    if deadline is not None and nodes % 1024 == 0 and time.time() > deadline:
+        raise SearchTimeout
+
     if board.is_check():
         # in check: standing pat isn't allowed, so try every legal move
         moves = list(board.legal_moves)
@@ -237,8 +248,13 @@ def quiescence(board: chess.Board, alpha: int, beta: int) -> int:
 
 # minmax function using recursion
 def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
-    # base cases
 
+    global nodes
+    nodes += 1
+    if deadline is not None and nodes % 1024 == 0 and time.time() > deadline:
+        raise SearchTimeout
+    
+    # base cases
     if board.is_checkmate():
         return -(MateScore + depth)
 
@@ -271,34 +287,60 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
     return best_score
 
 
-def get_best_move(board: chess.Board, depth: int = 3, verbose: bool = True) -> Optional[Tuple[chess.Move, int]]:
-    legal_moves = list(board.legal_moves)
-
-    if not legal_moves:
-        return None
-
+def search_root(board: chess.Board, depth: int) -> Tuple[list, int]:
+    # one complete search at a fixed depth; returns every move tied for best, and its score
     best_moves = []
     best_score = -INF
 
-    for move in legal_moves:
+    for move in list(board.legal_moves):
         board.push(move)
-        score = -negamax(board, depth-1, -INF, INF)
-        if verbose:
-            print(f"  {move}: {score}")
+        score = -negamax(board, depth - 1, -INF, INF)
         board.pop()
 
         if score > best_score:
-            best_moves.clear()
+            best_moves = [move]
             best_score = score
-            best_moves.append(move)
-
         elif score == best_score:
             best_moves.append(move)
 
-    if verbose:
-        print(f"Best score: {best_score}, candidates: {best_moves}")
+    return best_moves, best_score
 
-    return random.choice(best_moves), best_score
+
+def get_best_move(board: chess.Board, depth: int = 3, time_limit: Optional[float] = None,
+                  verbose: bool = True) -> Optional[Tuple[chess.Move, int]]:
+    global deadline, nodes
+
+    if not any(board.legal_moves):
+        return None
+
+    start = time.time()
+    nodes = 0
+    best_move, best_score = None, None
+
+    for current_depth in range(1, depth + 1):
+        # depth 1 always runs without a clock, so there is always a move to play
+        deadline = start + time_limit if (time_limit is not None and current_depth > 1) else None
+
+        try:
+            # search a copy: if the clock stops us mid-search, the copy is left with half-undone
+            # moves on it, but the caller's board is untouched
+            moves, score = search_root(board.copy(), current_depth)
+        except SearchTimeout:
+            break                   # this depth didn't finish: keep the last completed one
+
+        best_move, best_score = random.choice(moves), score
+        elapsed = time.time() - start
+
+        if verbose:
+            print(f"depth {current_depth}  score {score}  nodes {nodes}  time {elapsed:.2f}s  best {best_move}")
+
+        if abs(score) >= MateScore:
+            break                   # a forced mate was found (for either side): deeper won't change it
+        if time_limit is not None and elapsed > time_limit / 2:
+            break                   # the next depth would almost surely not finish in time
+
+    deadline = None
+    return best_move, best_score
 
 
 
