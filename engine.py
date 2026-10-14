@@ -20,6 +20,56 @@ INF = 1000000
 class SearchTimeout(Exception):
     pass
 
+
+# Zobrist hashing
+_rng = random.Random(2026)                      
+
+ZOBRIST_PIECE = {
+    (piece, color): [_rng.getrandbits(64) for _ in range(64)]
+    for piece in (chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING)
+    for color in (chess.WHITE, chess.BLACK)
+}
+ZOBRIST_BLACK_TO_MOVE = _rng.getrandbits(64)
+ZOBRIST_CASTLING = {square: _rng.getrandbits(64) for square in (chess.A1, chess.H1, chess.A8, chess.H8)}
+ZOBRIST_EP_FILE = [_rng.getrandbits(64) for _ in range(8)]
+
+
+def zobrist_hash(board: chess.Board) -> int:
+    key = 0
+
+    for piece, pieces in (
+        (chess.PAWN, board.pawns),
+        (chess.KNIGHT, board.knights),
+        (chess.BISHOP, board.bishops),
+        (chess.ROOK, board.rooks),
+        (chess.QUEEN, board.queens),
+        (chess.KING, board.kings),
+    ):
+        for color in (chess.WHITE, chess.BLACK):
+            table = ZOBRIST_PIECE[(piece, color)]
+            for square in chess.scan_forward(pieces & board.occupied_co[color]):
+                key ^= table[square]
+
+    if board.turn == chess.BLACK:
+        key ^= ZOBRIST_BLACK_TO_MOVE
+
+    for square in chess.scan_forward(board.castling_rights):
+        key ^= ZOBRIST_CASTLING[square]
+
+    if board.ep_square is not None and board.has_legal_en_passant():
+        key ^= ZOBRIST_EP_FILE[chess.square_file(board.ep_square)]
+
+    return key
+
+
+# ---------------------------------------------------------------------------
+# Transposition table: zobrist key -> (depth, score, flag, best move)
+# ---------------------------------------------------------------------------
+EXACT, LOWER_BOUND, UPPER_BOUND = 0, 1, 2
+TT_MAX_ENTRIES = 1_000_000
+tt = {}
+
+
 deadline = None     # time.time() value when the search must stop; None means no limit
 nodes = 0           # positions visited in the current search
 
@@ -34,7 +84,6 @@ material_value = {
 }
  
 # piece-square tables, written the way you'd see the board from White's side:
-# the first row is rank 8 and the last row is rank 1
 PAWN_TABLE = [
      0,  0,  0,  0,  0,  0,  0,  0,
     50, 50, 50, 50, 50, 50, 50, 50,
@@ -183,7 +232,6 @@ def evaluate_board(board: chess.Board) -> int:
     return score if board.turn == chess.WHITE else -score
 
 
-
 # function to help with move ordering
 def move_score(board: chess.Board, move: chess.Move) -> int:
     score = 0
@@ -246,14 +294,12 @@ def quiescence(board: chess.Board, alpha: int, beta: int) -> int:
     return bestValue
 
 
-# minmax function using recursion
 def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
-
     global nodes
     nodes += 1
     if deadline is not None and nodes % 1024 == 0 and time.time() > deadline:
         raise SearchTimeout
-    
+
     # base cases
     if board.is_checkmate():
         return -(MateScore + depth)
@@ -264,19 +310,44 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
     if board.is_check():
         depth += 1
 
-    if depth == 0: 
+    if depth == 0:
         return quiescence(board, alpha, beta)
 
+    # transposition table lookup
+    key = zobrist_hash(board)
+    entry = tt.get(key)
+    tt_move = None
+
+    if entry is not None:
+        entry_depth, entry_score, entry_flag, tt_move = entry
+
+        if entry_depth >= depth:
+            if entry_flag == EXACT:
+                return entry_score
+            if entry_flag == LOWER_BOUND and entry_score >= beta:
+                return entry_score
+            if entry_flag == UPPER_BOUND and entry_score <= alpha:
+                return entry_score
+
+    original_alpha = alpha
     legal_moves = order_moves(board, board.legal_moves)
+
+    # search the best move from an earlier search first
+    if tt_move is not None and tt_move in legal_moves:
+        legal_moves.remove(tt_move)
+        legal_moves.insert(0, tt_move)
+
     best_score = -INF
+    best_move = None
 
     for move in legal_moves:
         board.push(move)
-        score = -negamax(board,depth-1,-beta,-alpha)
+        score = -negamax(board, depth - 1, -beta, -alpha)
         board.pop()
 
         if score > best_score:
             best_score = score
+            best_move = move
 
         if best_score > alpha:
             alpha = best_score
@@ -284,17 +355,36 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
         if alpha >= beta:
             break
 
+    # transposition table store
+    if best_score <= original_alpha:
+        flag = UPPER_BOUND          # nothing beat alpha: the true score is at most best_score
+    elif best_score >= beta:
+        flag = LOWER_BOUND          # cut off early: the true score is at least best_score
+    else:
+        flag = EXACT
+
+    if len(tt) >= TT_MAX_ENTRIES:
+        tt.clear()
+    tt[key] = (depth, best_score, flag, best_move)
+
     return best_score
 
 
-def search_root(board: chess.Board, depth: int) -> Tuple[list, int]:
+def search_root(board: chess.Board, depth: int, first_move: Optional[chess.Move] = None) -> Tuple[list, int]:
     # one complete search at a fixed depth; returns every move tied for best, and its score
+    moves = order_moves(board, board.legal_moves)
+    if first_move in moves:
+        moves.remove(first_move)
+        moves.insert(0, first_move)     # last depth's best move first: it is usually best again
+
     best_moves = []
     best_score = -INF
 
-    for move in list(board.legal_moves):
+    for move in moves:
         board.push(move)
-        score = -negamax(board, depth - 1, -INF, INF)
+        # alpha = best_score - 1: anything worse than the best so far is cut off quickly,
+        # but a move that exactly ties the best still gets its exact score, so ties are kept
+        score = -negamax(board, depth - 1, -INF, -(best_score - 1))
         board.pop()
 
         if score > best_score:
@@ -315,6 +405,7 @@ def get_best_move(board: chess.Board, depth: int = 3, time_limit: Optional[float
 
     start = time.time()
     nodes = 0
+    tt.clear()                      # fresh table for every move
     best_move, best_score = None, None
 
     for current_depth in range(1, depth + 1):
@@ -324,7 +415,7 @@ def get_best_move(board: chess.Board, depth: int = 3, time_limit: Optional[float
         try:
             # search a copy: if the clock stops us mid-search, the copy is left with half-undone
             # moves on it, but the caller's board is untouched
-            moves, score = search_root(board.copy(), current_depth)
+            moves, score = search_root(board.copy(), current_depth, best_move)
         except SearchTimeout:
             break                   # this depth didn't finish: keep the last completed one
 
