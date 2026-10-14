@@ -255,7 +255,7 @@ def order_moves(board: chess.Board, moves) -> list:
 def quiescence(board: chess.Board, alpha: int, beta: int) -> int:
     global nodes
     nodes += 1
-    if deadline is not None and nodes % 1024 == 0 and time.time() > deadline:
+    if deadline is not None and nodes % 256 == 0 and time.time() > deadline:
         raise SearchTimeout
 
     if board.is_check():
@@ -297,7 +297,7 @@ def quiescence(board: chess.Board, alpha: int, beta: int) -> int:
 def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
     global nodes
     nodes += 1
-    if deadline is not None and nodes % 1024 == 0 and time.time() > deadline:
+    if deadline is not None and nodes % 256 == 0 and time.time() > deadline:
         raise SearchTimeout
 
     # base cases
@@ -406,16 +406,19 @@ def get_best_move(board: chess.Board, depth: int = 3, time_limit: Optional[float
     start = time.time()
     nodes = 0
     tt.clear()                      # fresh table for every move
-    best_move, best_score = None, None
+
+    # fallback in case even depth 1 runs out of time: the first move in our usual ordering
+    best_move = order_moves(board, board.legal_moves)[0]
+    best_score = 0
+
+    # the clock now applies from depth 1 onward, so a nearly empty clock can't be overrun
+    deadline = start + time_limit if time_limit is not None else None
 
     for current_depth in range(1, depth + 1):
-        # depth 1 always runs without a clock, so there is always a move to play
-        deadline = start + time_limit if (time_limit is not None and current_depth > 1) else None
-
         try:
             # search a copy: if the clock stops us mid-search, the copy is left with half-undone
             # moves on it, but the caller's board is untouched
-            moves, score = search_root(board.copy(), current_depth, best_move)
+            moves, score = search_root(board.copy(), current_depth, best_move if current_depth > 1 else None)
         except SearchTimeout:
             break                   # this depth didn't finish: keep the last completed one
 

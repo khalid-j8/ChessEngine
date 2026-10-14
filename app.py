@@ -34,7 +34,7 @@ def best_move():
     if human_move:
         log_move("Human", human_move, board.fen())
 
-    result = get_best_move(board, depth=64, time_limit=2.5)
+    result = get_best_move(board, depth=64, time_limit=2)
 
     if result is None:
         return jsonify({"move": None, "game_over": True})

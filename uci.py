@@ -5,6 +5,8 @@ from engine import get_best_move
 
 ENGINE_NAME = "InsaneEngine"
 DEFAULT_DEPTH = 4
+MOVE_OVERHEAD_MS = 50     # time lost to Python start-up and passing messages, per move
+MIN_THINK_MS = 10
 
 
 def send(message: str) -> None:
@@ -41,15 +43,16 @@ def parse_go(tokens: list, board: chess.Board, default_depth: int):
         return params["depth"], None
 
     if "movetime" in params:
-        return 64, params["movetime"] / 1000
+        return 64, max(params["movetime"] - MOVE_OVERHEAD_MS, MIN_THINK_MS) / 1000
 
     my_time = params.get("wtime" if board.turn == chess.WHITE else "btime")
     my_inc = params.get("winc" if board.turn == chess.WHITE else "binc", 0)
 
     if my_time is not None:
-        # spend about 1/30 of the remaining time plus half the increment, never more than half the clock
-        budget = min(my_time / 30 + my_inc / 2, my_time / 2)
-        return 64, budget / 1000
+        # spend about 1/30 of the remaining time plus half the increment, never more than half the clock,
+        # and keep MOVE_OVERHEAD_MS in reserve for the time spent outside the search
+        budget = min(my_time / 30 + my_inc / 2, my_time / 2) - MOVE_OVERHEAD_MS
+        return 64, max(budget, MIN_THINK_MS) / 1000
 
     return default_depth, None      # plain "go" with no limits: fixed depth
 
