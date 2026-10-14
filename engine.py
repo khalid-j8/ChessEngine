@@ -20,9 +20,12 @@ INF = 1000000
 class SearchTimeout(Exception):
     pass
 
-
-# Zobrist hashing
-_rng = random.Random(2026)                      
+# ---------------------------------------------------------------------------
+# Zobrist hashing: every (piece, colour, square) gets a random 64-bit number;
+# a position's key is all of its numbers XORed together, plus numbers for
+# side to move, castling rights and the en passant file
+# ---------------------------------------------------------------------------
+_rng = random.Random(2026)                      # fixed seed: same keys every run
 
 ZOBRIST_PIECE = {
     (piece, color): [_rng.getrandbits(64) for _ in range(64)]
@@ -69,6 +72,10 @@ EXACT, LOWER_BOUND, UPPER_BOUND = 0, 1, 2
 TT_MAX_ENTRIES = 1_000_000
 tt = {}
 
+# move-ordering memory for quiet moves, filled in during the search
+killers = {}        # ply -> up to 2 quiet moves that recently caused a cutoff at that ply
+history = {}        # (colour, from square, to square) -> how often that quiet move caused cutoffs
+
 
 deadline = None     # time.time() value when the search must stop; None means no limit
 nodes = 0           # positions visited in the current search
@@ -84,6 +91,7 @@ material_value = {
 }
  
 # piece-square tables, written the way you'd see the board from White's side:
+# the first row is rank 8 and the last row is rank 1
 PAWN_TABLE = [
      0,  0,  0,  0,  0,  0,  0,  0,
     50, 50, 50, 50, 50, 50, 50, 50,
@@ -232,6 +240,7 @@ def evaluate_board(board: chess.Board) -> int:
     return score if board.turn == chess.WHITE else -score
 
 
+
 # function to help with move ordering
 def move_score(board: chess.Board, move: chess.Move) -> int:
     score = 0
@@ -249,6 +258,24 @@ def move_score(board: chess.Board, move: chess.Move) -> int:
 
 def order_moves(board: chess.Board, moves) -> list:
     return sorted(moves, key=lambda move: move_score(board, move), reverse=True)
+
+
+def order_search_moves(board: chess.Board, moves, tt_move: Optional[chess.Move]) -> list:
+    # order: hash move, then captures/promotions (MVV-LVA), then killer moves, then quiet moves by history
+    ply = board.ply()
+    ply_killers = killers.get(ply, ())
+    color = board.turn
+
+    def key(move):
+        if move == tt_move:
+            return 10_000_000
+        if board.is_capture(move) or move.promotion:
+            return 1_000_000 + move_score(board, move)
+        if move in ply_killers:
+            return 900_000 - ply_killers.index(move)
+        return history.get((color, move.from_square, move.to_square), 0)
+
+    return sorted(moves, key=key, reverse=True)
 
 
 # quiescence search
@@ -330,12 +357,7 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
                 return entry_score
 
     original_alpha = alpha
-    legal_moves = order_moves(board, board.legal_moves)
-
-    # search the best move from an earlier search first
-    if tt_move is not None and tt_move in legal_moves:
-        legal_moves.remove(tt_move)
-        legal_moves.insert(0, tt_move)
+    legal_moves = order_search_moves(board, list(board.legal_moves), tt_move)
 
     best_score = -INF
     best_move = None
@@ -353,6 +375,16 @@ def negamax(board: chess.Board, depth: int, alpha: int, beta: int) -> int:
             alpha = best_score
 
         if alpha >= beta:
+            # a quiet move refuted this position: remember it for sibling positions (killer)
+            # and for the rest of the search (history), weighted by how deep the search was
+            if not board.is_capture(move) and not move.promotion:
+                ply = board.ply()
+                ply_killers = killers.setdefault(ply, [])
+                if move not in ply_killers:
+                    ply_killers.insert(0, move)
+                    del ply_killers[2:]
+                key = (board.turn, move.from_square, move.to_square)
+                history[key] = history.get(key, 0) + depth * depth
             break
 
     # transposition table store
@@ -406,6 +438,8 @@ def get_best_move(board: chess.Board, depth: int = 3, time_limit: Optional[float
     start = time.time()
     nodes = 0
     tt.clear()                      # fresh table for every move
+    killers.clear()
+    history.clear()
 
     # fallback in case even depth 1 runs out of time: the first move in our usual ordering
     best_move = order_moves(board, board.legal_moves)[0]
