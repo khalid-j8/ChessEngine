@@ -32,7 +32,7 @@
         "additional_lines_rgx": [],
         "event_name": "Fastchess Tournament",
         "site": "?",
-        "file": "/Users/khaliduni/Desktop/v10_vs_v9.pgn",
+        "file": "/Users/khaliduni/Desktop/v11_vs_v101.pgn",
         "notation": 0,
         "append_file": true,
         "track_nodes": false,
@@ -54,13 +54,13 @@
         "alpha": 0.05,
         "beta": 0.05,
         "elo0": 0.0,
-        "elo1": 30.0,
+        "elo1": 15.0,
         "model": "normalized",
         "enabled": true
     },
     "config_name": "config.json",
     "output": 0,
-    "seed": 4442227880818424193,
+    "seed": 13672129453016095466,
     "variant": 0,
     "type": 0,
     "gauntlet_seeds": 1,
@@ -89,8 +89,8 @@
     },
     "engines": [
         {
-            "name": "v10",
-            "dir": "/Users/khaliduni/Desktop/ChessEngine-v10",
+            "name": "v11",
+            "dir": "/Users/khaliduni/Desktop/ChessEngine-v11",
             "cmd": "/usr/bin/python3",
             "args": "uci.py",
             "restart": false,
@@ -109,8 +109,8 @@
             "variant": 0
         },
         {
-            "name": "v9",
-            "dir": "/Users/khaliduni/Desktop/ChessEngine-v9",
+            "name": "v10.1",
+            "dir": "/Users/khaliduni/Desktop/ChessEngine-v10.1",
             "cmd": "/usr/bin/python3",
             "args": "uci.py",
             "restart": false,
@@ -130,16 +130,16 @@
         }
     ],
     "stats": {
-        "v10 vs v9": {
-            "wins": 51,
-            "losses": 11,
-            "draws": 8,
-            "penta_WW": 17,
-            "penta_WD": 7,
-            "penta_WL": 10,
-            "penta_DD": 0,
-            "penta_LD": 1,
-            "penta_LL": 0
+        "v11 vs v10.1": {
+            "wins": 199,
+            "losses": 190,
+            "draws": 77,
+            "penta_WW": 39,
+            "penta_WD": 32,
+            "penta_WL": 89,
+            "penta_DD": 7,
+            "penta_LD": 31,
+            "penta_LL": 35
         }
     }
 }

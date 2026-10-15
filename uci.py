@@ -2,6 +2,7 @@ import sys
 import chess
 
 from engine import get_best_move
+from book import book_move
 
 ENGINE_NAME = "InsaneEngine"
 DEFAULT_DEPTH = 4
@@ -60,6 +61,7 @@ def parse_go(tokens: list, board: chess.Board, default_depth: int):
 def main() -> None:
     board = chess.Board()
     depth = DEFAULT_DEPTH
+    use_book = True
 
     while True:
         line = sys.stdin.readline()
@@ -75,6 +77,7 @@ def main() -> None:
             send(f"id name {ENGINE_NAME}")
             send("id author Khalid")
             send("option name Depth type spin default 4 min 1 max 8")
+            send("option name OwnBook type check default true")
             send("uciok")
 
         elif command == "isready":
@@ -90,11 +93,20 @@ def main() -> None:
                 value = tokens[tokens.index("value") + 1]
                 if name.lower() == "depth":
                     depth = int(value)
+                elif name.lower() == "ownbook":
+                    use_book = value.lower() == "true"
 
         elif command == "position":
             board = parse_position(tokens[1:])
 
         elif command == "go":
+            # play straight from the opening book while the position is in it
+            move = book_move(board) if use_book else None
+            if move is not None:
+                send("info string book move")
+                send(f"bestmove {move.uci()}")
+                continue
+
             max_depth, time_limit = parse_go(tokens, board, depth)
             result = get_best_move(board, depth=max_depth, time_limit=time_limit, verbose=False)
 

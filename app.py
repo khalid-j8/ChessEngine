@@ -3,6 +3,7 @@ from flask_cors import CORS
 import chess
 
 from engine import get_best_move
+from book import book_move
 
 app = Flask(__name__)
 CORS(app)  # allows your browser (a different origin) to call this server
@@ -34,7 +35,14 @@ def best_move():
     if human_move:
         log_move("Human", human_move, board.fen())
 
-    result = get_best_move(board, depth=5)
+    # play straight from the opening book while the position is in it
+    move = book_move(board)
+    if move is not None:
+        board.push(move)
+        log_move("Engine (book)", move.uci(), board.fen())
+        return jsonify({"move": move.uci(), "game_over": False})
+
+    result = get_best_move(board, depth=4)
 
     if result is None:
         return jsonify({"move": None, "game_over": True})
