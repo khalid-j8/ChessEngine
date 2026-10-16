@@ -3,7 +3,7 @@ from flask_cors import CORS
 import chess
 
 from engine import get_best_move
-from book import book_move
+from tools.book import book_move
 
 app = Flask(__name__)
 CORS(app)  # allows your browser (a different origin) to call this server

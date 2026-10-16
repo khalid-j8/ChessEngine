@@ -1,8 +1,12 @@
+import os
 import sys
 import chess
 
+# this file lives in tools/, engine.py lives one folder up: let Python find it
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from engine import get_best_move
-from book import book_move
+from tools.book import book_move
 
 ENGINE_NAME = "InsaneEngine"
 DEFAULT_DEPTH = 4
