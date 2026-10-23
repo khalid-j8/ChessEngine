@@ -2,7 +2,11 @@
 
 A chess engine written from scratch in Python, built as a project to learn algorithms and game-tree optimization.
 
-You can play a chess game against the engine using the browser. The engine also speaks the UCI protocol, so it works with chess GUIs and testing tools.
+**Play online: https://khalid-j8.github.io/ChessEngine/**
+
+The online version runs entirely in your browser, with no server, using [Pyodide](https://pyodide.org/) (Python compiled to WebAssembly). Choose your colour and a difficulty, and play.
+
+The engine also speaks the UCI protocol, so it works with chess GUIs and testing tools.
 
 Move generation and board rules come from [python-chess](https://python-chess.readthedocs.io/). Everything about *choosing* a move (search, evaluation, move ordering, time management) is implemented in [`engine.py`](engine.py).
 
@@ -36,8 +40,8 @@ A small hand-written book ([`tools/book.txt`](tools/book.txt)) of about 40 mainl
 
 ```
 engine.py      search, evaluation, move ordering, time control
-app.py         Flask server behind the browser board
-web/           browser board (chessboard.js + chess.js)
+app.py         Flask server for playing locally with normal Python
+web/           browser board (chessboard.js + chess.js) and the Pyodide worker that runs the engine
 tests/         regression tests and test positions
 tools/         UCI wrapper, opening book, testing and analysis scripts
 ```
@@ -50,11 +54,18 @@ Requires Python 3.9+.
 pip3 install -r requirements.txt
 ```
 
-**Play in the browser:**
+**Play in the browser locally** (the same site as the online version):
+```
+bash tools/build_site.sh
+python3 -m http.server 8000 --directory _site
+```
+Then open `http://localhost:8000`. The website is rebuilt and published to GitHub Pages automatically on every push to `main`.
+
+**Play against the Flask server** (normal Python; it searches to a fixed depth of 4, so the difficulty setting doesn't apply):
 ```
 python3 app.py
 ```
-Then open `web/main_page.html` with a local web server (for example VS Code's Live Server). The engine runs on `http://127.0.0.1:5001`.
+Then open `web/main_page.html?server` with a local web server (for example VS Code's Live Server).
 
 **Use it in a chess GUI** (Cute Chess, Arena, Banksia, …): add a UCI engine with the command
 ```
