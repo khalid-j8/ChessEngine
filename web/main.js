@@ -78,7 +78,6 @@ function sync () {
   renderMoveList(history)
   renderStatus()
   renderButtons()
-  renderEvalBarOrientation()
 }
 
 
@@ -143,6 +142,7 @@ const pendingRequests = new Map()   // request id -> { resolve, reject, token }
 if (USE_SERVER) {
   $('loadingOverlay').hidden = true
   $('engineNote').textContent = 'Search details aren\'t shown when playing against the local Flask server.'
+  $('engineNote').hidden = false
 } else {
   worker = new Worker('engine_worker.js')
   worker.onmessage = onWorkerMessage
@@ -246,7 +246,7 @@ async function makeEngineMove () {
 // engine readout: evaluation and the depth-by-depth search
 // ---------------------------------------------------------------------------
 
-// the engine reports scores from the side to move (itself); the readout and bar use White's view
+// the engine reports scores from the side to move (itself); the readout uses White's view
 function whiteScore (engineScore) {
   return state.humanColor === 'w' ? -engineScore : engineScore
 }
@@ -257,29 +257,12 @@ function formatScore (score) {   // score in centipawns, White's view
   return (pawns > 0 ? '+' : pawns < 0 ? '−' : '') + Math.abs(pawns).toFixed(1)
 }
 
-function describeScore (engineScore) {   // in words, from the human's side
-  if (Math.abs(engineScore) >= MATE_SCORE) {
-    return engineScore > 0 ? 'The engine has found a forced checkmate.' : 'The engine sees a forced checkmate coming for you.'
-  }
-  const you = -engineScore
-  const size = Math.abs(you)
-  if (size < 30) return 'The engine thinks the position is roughly equal.'
-  const who = you > 0 ? 'you are' : 'it is'
-  if (size < 100) return `The engine thinks ${who} slightly better.`
-  if (size < 300) return `The engine thinks ${who} better.`
-  return `The engine thinks ${who} winning.`
-}
-
 function showEval (engineScore) {
-  const white = whiteScore(engineScore)
-  $('evalNumber').textContent = formatScore(white)
-  $('evalWords').textContent = describeScore(engineScore)
-  setEvalBar(white)
+  $('evalNumber').textContent = formatScore(whiteScore(engineScore))
 }
 
 function showBookMove () {
   $('evalNumber').textContent = 'Book'
-  $('evalWords').textContent = 'Played from the opening book, so no search was needed.'
   clearDepthRows()
   $('depthRows').innerHTML = '<tr class="book-row"><td colspan="5">Opening book move</td></tr>'
 }
@@ -300,27 +283,13 @@ function addDepthRow (info) {
   row.innerHTML = `<td>${info.depth}</td><td>${san}</td><td>${formatScore(whiteScore(info.score))}</td>` +
     `<td>${info.nodes.toLocaleString()}</td><td>${info.time.toFixed(2)} s</td>`
   $('depthRows').appendChild(row)
+  $('depthScroll').scrollTop = $('depthScroll').scrollHeight   // keep the newest depth in view
   $('evalNumber').textContent = formatScore(whiteScore(info.score))
-  $('evalWords').textContent = `Searching… depth ${info.depth} done.`
-  setEvalBar(whiteScore(info.score))
-}
-
-// share of the bar for White: 50% when equal, approaching 100% / 0% as one side wins
-function setEvalBar (white) {
-  const capped = Math.max(-1000, Math.min(1000, Math.abs(white) >= MATE_SCORE ? Math.sign(white) * 1000 : white))
-  const share = 50 + 50 * (2 / (1 + Math.exp(-capped / 250)) - 1)
-  $('evalbarWhite').style.height = share + '%'
 }
 
 function resetReadout () {
   clearDepthRows()
   $('evalNumber').textContent = '0.0'
-  $('evalWords').textContent = 'The engine hasn\'t moved yet.'
-  setEvalBar(0)
-}
-
-function renderEvalBarOrientation () {
-  $('evalbar').classList.toggle('flipped', state.humanColor === 'b')
 }
 
 

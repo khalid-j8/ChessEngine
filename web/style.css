@@ -16,12 +16,10 @@
   --sq-dark: #87a091;
   --signal: #e2b33c;          /* last move, latest move, focus */
   --danger: #b3412c;
-  --bar-white: #f7f8f4;
-  --bar-black: #26302c;
 
   --font: "Recursive", ui-sans-serif, system-ui, sans-serif;
   --radius: 6px;
-  --board: min(680px, calc(100vw - 32px - 26px), calc(100vh - 150px));
+  --board: min(680px, calc(100vw - 32px), calc(100vh - 150px));
   color-scheme: light;
 }
 
@@ -38,8 +36,6 @@
     --felt-rule: #2f5047;
     --sq-light: #cbd2c0;
     --sq-dark: #6d8879;
-    --bar-white: #e3e9e4;
-    --bar-black: #2a3531;
     color-scheme: dark;
   }
 }
@@ -88,12 +84,23 @@ h1 {
   color: var(--muted);
 }
 
-.source-link {
+.credit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
   flex-shrink: 0;
+}
+.byline { margin: 0; color: var(--muted); }
+.source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   color: var(--ink);
   font-weight: 600;
   text-underline-offset: 3px;
 }
+.github-icon { width: 18px; height: 18px; fill: currentColor; flex: none; }
 
 /* ---------------------------------------------------------------------------
    Layout: board on the left, everything else beside it
@@ -110,13 +117,14 @@ h1 {
 }
 
 @media (min-width: 961px) {
-  :root { --board: min(680px, calc(100vw - 32px - 26px - 28px - 340px), calc(100vh - 150px)); }
+  :root { --board: min(680px, calc(100vw - 32px - 28px - 340px), calc(100vh - 150px)); }
 }
 
 @media (max-width: 960px) {
   .layout { grid-template-columns: 1fr; justify-items: center; }
-  .side { width: 100%; max-width: calc(var(--board) + 26px); }
+  .side { width: 100%; max-width: var(--board); }
   .masthead { flex-direction: column; align-items: flex-start; }
+  .credit { align-items: flex-start; }
 }
 
 .table {
@@ -173,27 +181,6 @@ cg-board square.check {
 .orientation-white .files :nth-child(even),
 .orientation-black .ranks :nth-child(odd),
 .orientation-black .files :nth-child(odd) { color: var(--sq-dark); }
-
-/* evaluation bar: White's share grows from the bottom (from the top when you play Black) */
-.evalbar {
-  position: relative;
-  width: 16px;
-  height: var(--board);
-  border-radius: 3px;
-  background: var(--bar-black);
-  overflow: hidden;
-  box-shadow: 0 0 0 1px var(--rule);
-}
-.evalbar-white {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 50%;
-  background: var(--bar-white);
-  transition: height 0.4s ease;
-}
-.evalbar.flipped .evalbar-white { bottom: auto; top: 0; }
 
 /* ---------------------------------------------------------------------------
    Overlays on the board: loading, promotion, result
@@ -335,22 +322,23 @@ h2 {
 }
 .engine h2 { color: var(--felt-muted); font-weight: 700; }
 
-.engine-eval {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-  margin-bottom: 12px;
-}
 .eval-number {
+  margin: 0 0 12px;
   font-size: 2.75rem;
   line-height: 1;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   font-variation-settings: "CASL" 1;
-  min-width: 3.2ch;
-  flex: none;           /* never squeeze the number: wide values like "Mate" would run into the words */
 }
-.eval-words { color: var(--felt-ink); font-size: 0.95rem; line-height: 1.35; }
+
+/* room for the header and six depths; deeper searches scroll instead of growing the box */
+.depth-scroll {
+  height: calc(26px + 6 * 28px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--felt-rule) transparent;
+}
 
 .depth-table {
   width: 100%;
@@ -363,7 +351,10 @@ h2 {
   font-weight: 600;
   color: var(--felt-muted);
   padding: 0 0 4px;
-  border-bottom: 1px solid var(--felt-rule);
+  position: sticky;      /* the header stays put while the rows scroll */
+  top: 0;
+  background: var(--felt);
+  box-shadow: inset 0 -1px 0 var(--felt-rule);   /* a border would scroll away with collapsed borders */
 }
 .depth-table td {
   text-align: right;
@@ -475,6 +466,5 @@ h2 {
 
 @media (prefers-reduced-motion: reduce) {
   .result-kings piece.fallen { animation: none; }
-  .evalbar-white { transition: none; }
   .spinner { animation-duration: 3s; }
 }

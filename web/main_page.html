@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>insane engine</title>
+    <title>My Chess Engine</title>
     <meta name="description" content="Play a chess engine written from scratch in Python. It runs in your browser.">
-    <link rel="icon" href="img/favicon.ico">
+    <link rel="icon" href="img/favicon.ico" sizes="any">
+    <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,16 +21,20 @@
 <body>
     <header class="masthead">
         <div>
-            <h1>My insane chess engine</h1>
-            <p class="lede">A chess engine I wrote from scratch in Python. It runs right here in your browser, so every move it plays is worked out on your device.</p>
+            <h1>My Chess Engine</h1>
+            <p class="lede">A chess engine I wrote from scratch in Python. It runs right here in your browser. Make a move to start playing.</p>
         </div>
-        <a class="source-link" href="https://github.com/khalid-j8/ChessEngine">Source code on GitHub</a>
+        <div class="credit">
+            <p class="byline">Built by Khalid Al Jundi</p>
+            <a class="source-link" href="https://github.com/khalid-j8/ChessEngine">
+                <svg class="github-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                Source code on GitHub
+            </a>
+        </div>
     </header>
 
     <main class="layout">
         <section class="table" aria-label="Board">
-            <div class="evalbar" id="evalbar" aria-hidden="true"><div class="evalbar-white" id="evalbarWhite"></div></div>
-
             <div class="board-frame">
                 <div id="board" class="board"></div>
 
@@ -71,17 +77,17 @@
 
             <section class="engine" aria-labelledby="engineHeading">
                 <h2 id="engineHeading">What the engine is thinking</h2>
-                <div class="engine-eval">
-                    <span class="eval-number" id="evalNumber">0.0</span>
-                    <span class="eval-words" id="evalWords">The engine hasn't moved yet.</span>
+                <p class="eval-number" id="evalNumber">0.0</p>
+                <!-- fixed height: rows scroll inside it, so the box doesn't grow as the search goes deeper -->
+                <div class="depth-scroll" id="depthScroll">
+                    <table class="depth-table">
+                        <thead>
+                            <tr><th scope="col">Depth</th><th scope="col">Best move</th><th scope="col">Eval</th><th scope="col">Positions</th><th scope="col">Time</th></tr>
+                        </thead>
+                        <tbody id="depthRows"></tbody>
+                    </table>
                 </div>
-                <table class="depth-table">
-                    <thead>
-                        <tr><th scope="col">Depth</th><th scope="col">Best move</th><th scope="col">Eval</th><th scope="col">Positions</th><th scope="col">Time</th></tr>
-                    </thead>
-                    <tbody id="depthRows"></tbody>
-                </table>
-                <p class="engine-note" id="engineNote">Each row is one pass of iterative deepening: the engine searches one move deeper each time until it runs out of time.</p>
+                <p class="engine-note" id="engineNote" hidden></p>
             </section>
 
             <section class="moves" aria-labelledby="movesHeading">
@@ -98,8 +104,8 @@
                 </fieldset>
                 <fieldset class="segmented">
                     <legend>Engine strength</legend>
-                    <label><input type="radio" name="level" value="easy"><span>Easy <small>0.5 s</small></span></label>
-                    <label><input type="radio" name="level" value="medium" checked><span>Medium <small>2 s</small></span></label>
+                    <label><input type="radio" name="level" value="easy" checked><span>Easy <small>0.5 s</small></span></label>
+                    <label><input type="radio" name="level" value="medium"><span>Medium <small>2 s</small></span></label>
                     <label><input type="radio" name="level" value="hard"><span>Hard <small>5 s</small></span></label>
                 </fieldset>
             </section>
