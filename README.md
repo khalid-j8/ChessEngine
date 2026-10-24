@@ -89,4 +89,4 @@ Every engine change is checked in two ways:
 
 ## Credits
 
-The website uses [chessground](https://github.com/lichess-org/chessground) (the board from lichess, GPL-3.0), [chess.js](https://github.com/jhlywa/chess.js) (BSD-2-Clause) and [Pyodide](https://pyodide.org/). The engine uses [python-chess](https://python-chess.readthedocs.io/) (GPL-3.0) for move generation.
+The website uses [chessground](https://github.com/lichess-org/chessground) (the board from lichess, GPL-3.0), [chess.js](https://github.com/jhlywa/chess.js) (BSD-2-Clause), [Pyodide](https://pyodide.org/) and the [icpieces](web/lib/pieces/icpieces/README.md) piece set by sadsnake1 (CC BY-NC-SA 4.0). The engine uses [python-chess](https://python-chess.readthedocs.io/) (GPL-3.0) for move generation.
