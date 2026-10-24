@@ -4,7 +4,7 @@ A chess engine written from scratch in Python, built as a project to learn algor
 
 **Play online: https://khalid-j8.github.io/ChessEngine/**
 
-The online version runs entirely in your browser, with no server, using [Pyodide](https://pyodide.org/) (Python compiled to WebAssembly). Choose your colour and a difficulty, and play.
+The online version runs entirely in your browser, with no server, using [Pyodide](https://pyodide.org/) (Python compiled to WebAssembly). Choose your colour and a difficulty, and play. While it thinks, the page shows the search live: the evaluation and each depth of iterative deepening, with the best move, positions searched and time.
 
 The engine also speaks the UCI protocol, so it works with chess GUIs and testing tools.
 
@@ -41,7 +41,8 @@ A small hand-written book ([`tools/book.txt`](tools/book.txt)) of about 40 mainl
 ```
 engine.py      search, evaluation, move ordering, time control
 app.py         Flask server for playing locally with normal Python
-web/           browser board (chessboard.js + chess.js) and the Pyodide worker that runs the engine
+web/           the website: board, engine readout, and the Pyodide worker that runs the engine
+web/lib/       bundled libraries: chessground (lichess's board), chess.js, python-chess
 tests/         regression tests and test positions
 tools/         UCI wrapper, opening book, testing and analysis scripts
 ```
@@ -85,3 +86,7 @@ Every engine change is checked in two ways:
 - principal variation search and aspiration windows
 - pawn structure and king safety in the evaluation
 - playing online as a Lichess bot
+
+## Credits
+
+The website uses [chessground](https://github.com/lichess-org/chessground) (the board from lichess, GPL-3.0), [chess.js](https://github.com/jhlywa/chess.js) (BSD-2-Clause) and [Pyodide](https://pyodide.org/). The engine uses [python-chess](https://python-chess.readthedocs.io/) (GPL-3.0) for move generation.

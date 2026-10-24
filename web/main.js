@@ -1,199 +1,490 @@
-// seconds the engine thinks per move, for each difficulty
+import { Chessground } from './lib/chessground/chessground.min.js'
+import { Chess } from './lib/chess.js/chess.js'
+
+// seconds the engine thinks per move, for each strength
 const THINK_TIMES = { easy: 0.5, medium: 2, hard: 5 }
+const MATE_SCORE = 100000          // engine.py scores mates as MateScore (+ depth) or more
 
 // the engine normally runs in the browser (engine_worker.js);
 // open the page with ?server at the end of the URL to use the local Flask server (python3 app.py) instead
 const USE_SERVER = new URLSearchParams(window.location.search).has('server')
 const SERVER_URL = 'http://127.0.0.1:5001/best-move'
 
-let board = null
-const game = new Chess()
-let humanColor = 'w'          // 'w' or 'b'
-let engineReady = USE_SERVER  // the in-browser engine needs a few seconds to load
-let engineThinking = false
-let engineError = null
-let gameId = 0                // bumped on every new game, so a late reply from an old game is ignored
+const $ = (id) => document.getElementById(id)
+const COLOR_NAME = { w: 'white', b: 'black' }
+const PIECE_NAME = { q: 'queen', r: 'rook', b: 'bishop', n: 'knight' }
 
-const statusEl = document.getElementById('status')
-const difficultyEl = document.getElementById('difficulty')
-const colorEl = document.getElementById('color')
+const game = new Chess()
+const state = {
+  humanColor: 'w',
+  engineReady: USE_SERVER,
+  engineThinking: false,
+  engineError: null,
+  resigned: false,
+  token: 0,            // bumped by new game and take back, so a late engine reply is ignored
+  pendingPromotion: null
+}
 
 
 // ---------------------------------------------------------------------------
-// talking to the engine
+// the board
+// ---------------------------------------------------------------------------
+
+const cg = Chessground($('board'), {
+  fen: game.fen(),
+  orientation: 'white',
+  coordinates: true,
+  animation: { enabled: true, duration: 220 },
+  highlight: { lastMove: true, check: true },
+  premovable: { enabled: false },
+  draggable: { showGhost: true },
+  movable: {
+    free: false,
+    color: undefined,
+    showDests: true,
+    events: { after: onHumanMove }
+  }
+})
+
+function legalDests () {
+  const dests = new Map()
+  for (const m of game.moves({ verbose: true })) {
+    if (!dests.has(m.from)) dests.set(m.from, [])
+    dests.get(m.from).push(m.to)
+  }
+  return dests
+}
+
+function humanCanMove () {
+  return state.engineReady && !state.engineError && !state.engineThinking && !state.resigned &&
+    !state.pendingPromotion && !game.isGameOver() && game.turn() === state.humanColor
+}
+
+// redraws everything from the chess.js game: board, move list, status, buttons
+function sync () {
+  const history = game.history({ verbose: true })
+  const last = history[history.length - 1]
+  const canMove = humanCanMove()
+
+  cg.set({
+    fen: game.fen(),
+    orientation: COLOR_NAME[state.humanColor],
+    turnColor: COLOR_NAME[game.turn()],
+    lastMove: last ? [last.from, last.to] : undefined,
+    check: game.inCheck() ? COLOR_NAME[game.turn()] : false,
+    movable: { color: canMove ? COLOR_NAME[state.humanColor] : undefined, dests: canMove ? legalDests() : new Map() }
+  })
+
+  renderMoveList(history)
+  renderStatus()
+  renderButtons()
+  renderEvalBarOrientation()
+}
+
+
+// ---------------------------------------------------------------------------
+// human moves (and promotion)
+// ---------------------------------------------------------------------------
+
+function onHumanMove (from, to) {
+  const piece = game.get(from)
+  const lastRank = state.humanColor === 'w' ? '8' : '1'
+  if (piece && piece.type === 'p' && to[1] === lastRank) {
+    askPromotion(from, to)
+    return
+  }
+  playHumanMove({ from, to })
+}
+
+function playHumanMove (move) {
+  game.move(move)
+  sync()
+  if (game.isGameOver()) return showResult()
+  window.setTimeout(makeEngineMove, 150)
+}
+
+function askPromotion (from, to) {
+  state.pendingPromotion = { from, to }
+  const box = $('promotionChoices')
+  box.innerHTML = ''
+  for (const p of ['q', 'r', 'b', 'n']) {
+    const button = document.createElement('button')
+    button.className = 'promotion-choice'
+    button.setAttribute('aria-label', PIECE_NAME[p])
+    button.innerHTML = `<piece class="${PIECE_NAME[p]} ${COLOR_NAME[state.humanColor]}"></piece>`
+    button.addEventListener('click', () => {
+      state.pendingPromotion = null
+      $('promotionOverlay').hidden = true
+      playHumanMove({ from, to, promotion: p })
+    })
+    box.appendChild(button)
+  }
+  $('promotionOverlay').hidden = false
+  box.querySelector('button').focus()
+  renderStatus()
+  renderButtons()
+}
+
+$('promotionCancel').addEventListener('click', () => {
+  state.pendingPromotion = null
+  $('promotionOverlay').hidden = true
+  sync()   // puts the pawn back
+})
+
+
+// ---------------------------------------------------------------------------
+// the engine
 // ---------------------------------------------------------------------------
 
 let worker = null
 let nextRequestId = 0
-const pendingRequests = new Map()   // request id -> { resolve, reject }
+const pendingRequests = new Map()   // request id -> { resolve, reject, token }
 
-if (!USE_SERVER) {
+if (USE_SERVER) {
+  $('loadingOverlay').hidden = true
+  $('engineNote').textContent = 'Search details aren\'t shown when playing against the local Flask server.'
+} else {
   worker = new Worker('engine_worker.js')
+  worker.onmessage = onWorkerMessage
+}
 
-  worker.onmessage = (event) => {
-    const msg = event.data
+function onWorkerMessage (event) {
+  const msg = event.data
 
-    if (msg.type === 'ready') {
-      engineReady = true
-      updateStatus()
-      makeEngineMove()
-      return
-    }
+  if (msg.type === 'loading') {
+    $('loadingStage').textContent = msg.stage
+    return
+  }
+  if (msg.type === 'ready') {
+    state.engineReady = true
+    $('loadingOverlay').hidden = true
+    sync()
+    makeEngineMove()
+    return
+  }
 
-    const request = pendingRequests.get(msg.id)
-    pendingRequests.delete(msg.id)
+  const request = pendingRequests.get(msg.id)
 
-    if (msg.type === 'move' && request) {
-      request.resolve(msg)
-    } else if (msg.type === 'error') {
-      console.error('Engine error:', msg.message)
-      if (request) {
-        request.reject(new Error(msg.message))
-      } else {
-        engineError = 'The engine failed to load. Try reloading the page.'
-        updateStatus()
-      }
+  if (msg.type === 'info') {
+    if (request && request.token === state.token) addDepthRow(msg)
+    return
+  }
+
+  pendingRequests.delete(msg.id)
+  if (msg.type === 'move' && request) {
+    request.resolve(msg)
+  } else if (msg.type === 'error') {
+    console.error('Engine error:', msg.message)
+    if (request) {
+      request.reject(new Error(msg.message))
+    } else {
+      state.engineError = 'The engine failed to load. Reload the page to try again.'
+      $('loadingStage').textContent = state.engineError
+      $('loadingOverlay').querySelector('.spinner').hidden = true
+      sync()
     }
   }
 }
 
 // every move played so far, in UCI format ("e2e4", "e7e8q"), so the engine knows the full history
-function moveList () {
+function uciMoves () {
   return game.history({ verbose: true }).map(m => m.from + m.to + (m.promotion || ''))
 }
 
-// asks the engine for a move; resolves to { move: "e7e5" } (move is null if the game is over)
+function selectedLevel () {
+  return document.querySelector('input[name="level"]:checked').value
+}
+
 function askEngine (moves) {
   if (USE_SERVER) {
     return fetch(SERVER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fen: game.fen(), human_move: moves[moves.length - 1], moves: moves })
+      body: JSON.stringify({ fen: game.fen(), human_move: moves[moves.length - 1], moves })
     }).then(response => response.json())
   }
 
   return new Promise((resolve, reject) => {
     const id = nextRequestId++
-    pendingRequests.set(id, { resolve, reject })
-    worker.postMessage({ id, moves, thinkTime: THINK_TIMES[difficultyEl.value] })
+    pendingRequests.set(id, { resolve, reject, token: state.token })
+    worker.postMessage({ id, moves, thinkTime: THINK_TIMES[selectedLevel()] })
   })
 }
 
-// converts a UCI move string like "e7e5" (or "e7e8q" for promotion)
-// into the {from, to, promotion} object chess.js expects
-function uciToMoveObject (uci) {
-  return {
-    from: uci.slice(0, 2),
-    to: uci.slice(2, 4),
-    promotion: uci.length > 4 ? uci.slice(4, 5) : 'q'
-  }
-}
-
-// the engine moves whenever it's not the human's turn; checking the turn here also stops the
-// delayed call from onDrop from moving for the human if a new game was started in the meantime
 async function makeEngineMove () {
-  if (game.game_over() || !engineReady || engineThinking || game.turn() === humanColor) return
+  if (!state.engineReady || state.engineError || state.engineThinking || state.resigned) return
+  if (game.isGameOver() || game.turn() === state.humanColor) return
 
-  const thisGame = gameId
-  engineThinking = true
-  updateStatus()
+  const token = state.token
+  state.engineThinking = true
+  clearDepthRows()
+  sync()
 
   try {
-    const reply = await askEngine(moveList())
-    if (thisGame !== gameId) return      // a new game was started while the engine was thinking
+    const reply = await askEngine(uciMoves())
+    if (token !== state.token) return       // new game or take back while the engine was thinking
 
     if (reply.move) {
-      game.move(uciToMoveObject(reply.move))
-      board.position(game.fen())
+      game.move({ from: reply.move.slice(0, 2), to: reply.move.slice(2, 4), promotion: reply.move[4] })
     }
+    if (reply.book) showBookMove()
+    else if (reply.score !== undefined && reply.score !== null) showEval(reply.score)
   } catch (err) {
     console.error('Engine request failed:', err)
-    if (thisGame === gameId) engineError = 'The engine had an error. Start a new game to try again.'
+    if (token === state.token) state.engineError = 'The engine hit an error. Start a new game to try again.'
   }
 
-  if (thisGame === gameId) {
-    engineThinking = false
-    updateStatus()
+  if (token === state.token) {
+    state.engineThinking = false
+    sync()
+    if (game.isGameOver()) showResult()
   }
 }
 
 
 // ---------------------------------------------------------------------------
-// status line and game controls
+// engine readout: evaluation and the depth-by-depth search
 // ---------------------------------------------------------------------------
 
-function updateStatus () {
+// the engine reports scores from the side to move (itself); the readout and bar use White's view
+function whiteScore (engineScore) {
+  return state.humanColor === 'w' ? -engineScore : engineScore
+}
+
+function formatScore (score) {   // score in centipawns, White's view
+  if (Math.abs(score) >= MATE_SCORE) return 'Mate'
+  const pawns = score / 100
+  return (pawns > 0 ? '+' : pawns < 0 ? '−' : '') + Math.abs(pawns).toFixed(1)
+}
+
+function describeScore (engineScore) {   // in words, from the human's side
+  if (Math.abs(engineScore) >= MATE_SCORE) {
+    return engineScore > 0 ? 'The engine has found a forced checkmate.' : 'The engine sees a forced checkmate coming for you.'
+  }
+  const you = -engineScore
+  const size = Math.abs(you)
+  if (size < 30) return 'The engine thinks the position is roughly equal.'
+  const who = you > 0 ? 'you are' : 'it is'
+  if (size < 100) return `The engine thinks ${who} slightly better.`
+  if (size < 300) return `The engine thinks ${who} better.`
+  return `The engine thinks ${who} winning.`
+}
+
+function showEval (engineScore) {
+  const white = whiteScore(engineScore)
+  $('evalNumber').textContent = formatScore(white)
+  $('evalWords').textContent = describeScore(engineScore)
+  setEvalBar(white)
+}
+
+function showBookMove () {
+  $('evalNumber').textContent = 'Book'
+  $('evalWords').textContent = 'Played from the opening book, so no search was needed.'
+  clearDepthRows()
+  $('depthRows').innerHTML = '<tr class="book-row"><td colspan="5">Opening book move</td></tr>'
+}
+
+function clearDepthRows () {
+  $('depthRows').innerHTML = ''
+}
+
+// one row per completed depth; uses a scratch board to turn "b8c6" into "Nc6"
+function addDepthRow (info) {
+  let san = info.best
+  try {
+    const scratch = new Chess(game.fen())
+    san = scratch.move({ from: info.best.slice(0, 2), to: info.best.slice(2, 4), promotion: info.best[4] }).san
+  } catch (e) { /* keep the UCI text */ }
+
+  const row = document.createElement('tr')
+  row.innerHTML = `<td>${info.depth}</td><td>${san}</td><td>${formatScore(whiteScore(info.score))}</td>` +
+    `<td>${info.nodes.toLocaleString()}</td><td>${info.time.toFixed(2)} s</td>`
+  $('depthRows').appendChild(row)
+  $('evalNumber').textContent = formatScore(whiteScore(info.score))
+  $('evalWords').textContent = `Searching… depth ${info.depth} done.`
+  setEvalBar(whiteScore(info.score))
+}
+
+// share of the bar for White: 50% when equal, approaching 100% / 0% as one side wins
+function setEvalBar (white) {
+  const capped = Math.max(-1000, Math.min(1000, Math.abs(white) >= MATE_SCORE ? Math.sign(white) * 1000 : white))
+  const share = 50 + 50 * (2 / (1 + Math.exp(-capped / 250)) - 1)
+  $('evalbarWhite').style.height = share + '%'
+}
+
+function resetReadout () {
+  clearDepthRows()
+  $('evalNumber').textContent = '0.0'
+  $('evalWords').textContent = 'The engine hasn\'t moved yet.'
+  setEvalBar(0)
+}
+
+function renderEvalBarOrientation () {
+  $('evalbar').classList.toggle('flipped', state.humanColor === 'b')
+}
+
+
+// ---------------------------------------------------------------------------
+// move list, status line, buttons
+// ---------------------------------------------------------------------------
+
+function renderMoveList (history) {
+  const list = $('moveList')
+  list.innerHTML = ''
+  for (let i = 0; i < history.length; i += 2) {
+    const li = document.createElement('li')
+    const number = document.createElement('b')
+    number.textContent = i / 2 + 1 + '.'
+    li.appendChild(number)
+    for (const move of history.slice(i, i + 2)) {
+      const span = document.createElement('span')
+      span.textContent = move.san
+      li.appendChild(span)
+    }
+    list.appendChild(li)
+  }
+  const spans = list.querySelectorAll('span')
+  if (spans.length) spans[spans.length - 1].classList.add('latest')
+  $('movesEmpty').hidden = history.length > 0
+  list.scrollTop = list.scrollHeight
+}
+
+function renderStatus () {
   let text
-  if (engineError) {
-    text = engineError
-  } else if (!engineReady) {
-    text = 'Loading engine…'
-  } else if (game.in_checkmate()) {
-    text = game.turn() === humanColor ? 'Checkmate. The engine wins.' : 'Checkmate. You win!'
-  } else if (game.in_draw()) {
-    text = 'Draw.'
-  } else if (engineThinking || game.turn() !== humanColor) {
-    text = 'Thinking…'
-  } else {
-    text = game.in_check() ? 'Your move (you are in check)' : 'Your move'
-  }
-  statusEl.textContent = text
+  if (state.engineError) text = state.engineError
+  else if (!state.engineReady) text = 'Loading the engine…'
+  else if (state.resigned || game.isGameOver()) text = 'Game over.'
+  else if (state.pendingPromotion) text = 'Choose a piece to promote to.'
+  else if (game.turn() !== state.humanColor) text = 'The engine is thinking…'
+  else text = game.inCheck() ? 'Your move. You\'re in check.' : 'Your move.'
+
+  $('statusText').textContent = text
+  $('turnDot').className = 'turn-dot ' + COLOR_NAME[game.turn()]
 }
+
+function humanMovesPlayed () {
+  return game.history({ verbose: true }).filter(m => m.color === state.humanColor).length
+}
+
+function renderButtons () {
+  const over = state.resigned || game.isGameOver()
+  $('takeBack').disabled = !state.engineReady || !!state.engineError || humanMovesPlayed() === 0 || !!state.pendingPromotion
+  $('resign').disabled = !state.engineReady || !!state.engineError || over || humanMovesPlayed() === 0
+}
+
+
+// ---------------------------------------------------------------------------
+// game over
+// ---------------------------------------------------------------------------
+
+function resultFor () {
+  if (state.resigned) return { winner: oppositeColor(state.humanColor), title: 'The engine wins', reason: 'You resigned.' }
+  if (game.isCheckmate()) {
+    const winner = oppositeColor(game.turn())
+    return winner === state.humanColor
+      ? { winner, title: 'You win!', reason: 'Checkmate. You beat the engine.' }
+      : { winner, title: 'The engine wins', reason: 'Checkmate.' }
+  }
+  let reason = 'Draw by the fifty-move rule.'
+  if (game.isStalemate()) reason = 'Stalemate: the side to move has no legal moves but isn\'t in check.'
+  else if (game.isThreefoldRepetition()) reason = 'The same position came up three times.'
+  else if (game.isInsufficientMaterial()) reason = 'Neither side has enough pieces left to checkmate.'
+  return { winner: null, title: 'Draw', reason }
+}
+
+function oppositeColor (c) { return c === 'w' ? 'b' : 'w' }
+
+function showResult () {
+  const result = resultFor()
+  const kings = $('resultKings')
+  // the winner's king stands, the loser's king is knocked over; both stand for a draw
+  kings.innerHTML = ['w', 'b'].map(c => {
+    const fallen = result.winner && result.winner !== c
+    return `<piece class="king ${COLOR_NAME[c]}${fallen ? ' fallen' : ''}"></piece>`
+  }).join('')
+  const overlay = $('resultOverlay')
+  overlay.dataset.outcome = !result.winner ? 'draw' : result.winner === state.humanColor ? 'win' : 'loss'
+  $('resultTitle').textContent = result.title
+  $('resultReason').textContent = result.reason
+  overlay.hidden = false
+  $('playAgain').focus()
+  sync()
+}
+
+$('viewBoard').addEventListener('click', () => { $('resultOverlay').hidden = true })
+$('playAgain').addEventListener('click', newGame)
+
+
+// ---------------------------------------------------------------------------
+// controls
+// ---------------------------------------------------------------------------
 
 function newGame () {
-  gameId++
-  engineThinking = false
-  if (engineReady) engineError = null   // a failed engine load stays on screen: only a reload can fix it
-  humanColor = colorEl.value
+  state.token++
+  state.engineThinking = false
+  state.resigned = false
+  state.pendingPromotion = null
+  if (state.engineReady) state.engineError = null   // a failed engine load needs a page reload
+  state.humanColor = document.querySelector('input[name="color"]:checked').value
   game.reset()
-  board.orientation(humanColor === 'w' ? 'white' : 'black')
-  board.position('start')
-  updateStatus()
+  $('resultOverlay').hidden = true
+  $('promotionOverlay').hidden = true
+  resetReadout()
+  sync()
   makeEngineMove()   // when the human plays Black, the engine opens
 }
 
-
-// ---------------------------------------------------------------------------
-// chessboard.js callbacks
-// ---------------------------------------------------------------------------
-
-// only let the human pick up their own pieces, on their own turn, while the engine isn't busy
-function onDragStart (source, piece) {
-  if (game.game_over() || !engineReady || engineThinking || engineError) return false
-  if (game.turn() !== humanColor) return false
-  if (piece[0] !== humanColor) return false
+// undo back to the human's previous turn; cancels the engine if it's thinking
+function takeBack () {
+  state.token++
+  state.engineThinking = false
+  state.resigned = false
+  state.pendingPromotion = null
+  if (state.engineReady) state.engineError = null
+  game.undo()
+  if (game.turn() !== state.humanColor && game.history().length > 0) game.undo()
+  $('resultOverlay').hidden = true
+  $('promotionOverlay').hidden = true
+  resetReadout()
+  sync()
+  makeEngineMove()   // only moves if it's the engine's turn (playing Black with every move taken back)
 }
 
-// checks the human's move is legal, then lets the engine reply
-function onDrop (source, target) {
-  const move = game.move({
-    from: source,
-    to: target,
-    promotion: 'q' // always promote to a queen for simplicity
-  })
-
-  if (move === null) return 'snapback'
-
-  updateStatus()
-  window.setTimeout(makeEngineMove, 250)
+let resignArmed = null
+function resign () {
+  const button = $('resign')
+  if (!resignArmed) {
+    button.textContent = 'Confirm resign'
+    button.classList.add('danger')
+    resignArmed = window.setTimeout(disarmResign, 3000)
+    return
+  }
+  disarmResign()
+  state.token++
+  state.engineThinking = false
+  state.resigned = true
+  showResult()
+}
+function disarmResign () {
+  window.clearTimeout(resignArmed)
+  resignArmed = null
+  $('resign').textContent = 'Resign'
+  $('resign').classList.remove('danger')
 }
 
-// update the board position after the piece snap
-// for castling, en passant, pawn promotion
-function onSnapEnd () {
-  board.position(game.fen())
-}
+$('newGame').addEventListener('click', newGame)
+$('takeBack').addEventListener('click', takeBack)
+$('resign').addEventListener('click', resign)
+for (const input of document.querySelectorAll('input[name="color"]')) input.addEventListener('change', newGame)
 
-board = Chessboard('myBoard', {
-  draggable: true,
-  position: 'start',
-  onDragStart: onDragStart,
-  onDrop: onDrop,
-  onSnapEnd: onSnapEnd
+window.addEventListener('resize', () => cg.redrawAll())
+// chessground remembers where the board is on the page; when the layout above it shifts without a
+// window resize (e.g. the web font loading and rewrapping the header), clicks and taps would land
+// on the wrong squares, so redraw whenever the page's size changes
+new ResizeObserver(() => cg.redrawAll()).observe(document.body)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('resultOverlay').hidden) $('resultOverlay').hidden = true
 })
 
-document.getElementById('newGame').addEventListener('click', newGame)
-colorEl.addEventListener('change', newGame)
-window.addEventListener('resize', () => board.resize())
-
-updateStatus()
+resetReadout()
+sync()

@@ -4,47 +4,108 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>insane engine</title>
+    <meta name="description" content="Play a chess engine written from scratch in Python. It runs in your browser.">
     <link rel="icon" href="img/favicon.ico">
 
-    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css" integrity="sha384-q94+BZtLrkL1/ohfjR8c6L+A6qzNH9R2hBLwyoAfu3i/WCvQjzL2RQJ3uNHDISdU" crossorigin="anonymous">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Recursive:slnt,wght,CASL@-15..0,300..1000,0..1&display=swap">
 
-    <style>
-        body { font-family: system-ui, sans-serif; margin: 24px 16px; }
-        #myBoard { width: min(400px, 100%); }
-        .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
-        #status { margin-top: 12px; min-height: 1.4em; }
-    </style>
+    <link rel="stylesheet" href="lib/chessground/chessground.base.css">
+    <link rel="stylesheet" href="lib/chessground/chessground.cburnett.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-    <h1>My insane chess engine</h1>
+    <header class="masthead">
+        <div>
+            <h1>My insane chess engine</h1>
+            <p class="lede">A chess engine I wrote from scratch in Python. It runs right here in your browser, so every move it plays is worked out on your device.</p>
+        </div>
+        <a class="source-link" href="https://github.com/khalid-j8/ChessEngine">Source code on GitHub</a>
+    </header>
 
-    <div class="controls">
-        <label>Play as
-            <select id="color">
-                <option value="w" selected>White</option>
-                <option value="b">Black</option>
-            </select>
-        </label>
-        <label>Difficulty
-            <select id="difficulty">
-                <option value="easy">Easy (0.5 s)</option>
-                <option value="medium" selected>Medium (2 s)</option>
-                <option value="hard">Hard (5 s)</option>
-            </select>
-        </label>
-        <button id="newGame">New game</button>
-    </div>
+    <main class="layout">
+        <section class="table" aria-label="Board">
+            <div class="evalbar" id="evalbar" aria-hidden="true"><div class="evalbar-white" id="evalbarWhite"></div></div>
 
-    <div id="myBoard"></div>
-    <div id="status"></div>
+            <div class="board-frame">
+                <div id="board" class="board"></div>
 
-    <p><a href="https://github.com/khalid-j8/ChessEngine">Source code on GitHub</a></p>
+                <!-- shown while the engine loads -->
+                <div class="board-overlay loading" id="loadingOverlay">
+                    <div class="spinner" aria-hidden="true"></div>
+                    <p class="overlay-title">Getting the engine ready</p>
+                    <p class="overlay-sub" id="loadingStage">Starting up</p>
+                    <p class="overlay-note">The first visit downloads a few MB of Python. After that it's cached.</p>
+                </div>
 
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js" integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.js" integrity="sha384-s3XgLpvmHyscVpijnseAmye819Ee3yaGa8NxstkJVyA6nuDFjt59u1QvuEl/mecz" crossorigin="anonymous"></script>
+                <!-- pawn promotion picker -->
+                <div class="board-overlay promotion" id="promotionOverlay" hidden>
+                    <p class="overlay-title">Promote to</p>
+                    <div class="promotion-choices cg-wrap" id="promotionChoices"></div>
+                    <button class="text-button" id="promotionCancel">Cancel</button>
+                </div>
 
-    <script src="main.js"></script>
+                <!-- game over -->
+                <div class="board-overlay result" id="resultOverlay" hidden>
+                    <div class="result-kings cg-wrap" id="resultKings" aria-hidden="true"></div>
+                    <p class="result-title" id="resultTitle"></p>
+                    <p class="result-reason" id="resultReason"></p>
+                    <div class="result-actions">
+                        <button class="button primary" id="playAgain">Play again</button>
+                        <button class="button" id="viewBoard">See the final position</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <aside class="side">
+            <p class="status" id="status" role="status"><span class="turn-dot" id="turnDot"></span><span id="statusText">Loading…</span></p>
+
+            <div class="game-buttons">
+                <button class="button primary" id="newGame">New game</button>
+                <button class="button" id="takeBack">Take back</button>
+                <button class="button" id="resign">Resign</button>
+            </div>
+
+            <section class="engine" aria-labelledby="engineHeading">
+                <h2 id="engineHeading">What the engine is thinking</h2>
+                <div class="engine-eval">
+                    <span class="eval-number" id="evalNumber">0.0</span>
+                    <span class="eval-words" id="evalWords">The engine hasn't moved yet.</span>
+                </div>
+                <table class="depth-table">
+                    <thead>
+                        <tr><th scope="col">Depth</th><th scope="col">Best move</th><th scope="col">Eval</th><th scope="col">Positions</th><th scope="col">Time</th></tr>
+                    </thead>
+                    <tbody id="depthRows"></tbody>
+                </table>
+                <p class="engine-note" id="engineNote">Each row is one pass of iterative deepening: the engine searches one move deeper each time until it runs out of time.</p>
+            </section>
+
+            <section class="moves" aria-labelledby="movesHeading">
+                <h2 id="movesHeading">Moves</h2>
+                <ol class="move-list" id="moveList" aria-live="polite"></ol>
+                <p class="moves-empty" id="movesEmpty">No moves yet.</p>
+            </section>
+
+            <section class="controls" aria-label="Game settings">
+                <fieldset class="segmented">
+                    <legend>Play as</legend>
+                    <label><input type="radio" name="color" value="w" checked><span>White</span></label>
+                    <label><input type="radio" name="color" value="b"><span>Black</span></label>
+                </fieldset>
+                <fieldset class="segmented">
+                    <legend>Engine strength</legend>
+                    <label><input type="radio" name="level" value="easy"><span>Easy <small>0.5 s</small></span></label>
+                    <label><input type="radio" name="level" value="medium" checked><span>Medium <small>2 s</small></span></label>
+                    <label><input type="radio" name="level" value="hard"><span>Hard <small>5 s</small></span></label>
+                </fieldset>
+            </section>
+        </aside>
+    </main>
+
+    <script type="module" src="main.js"></script>
 </body>
 </html>
